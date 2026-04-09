@@ -163,6 +163,94 @@ footer{text-align:center;margin-top:46px;color:var(--text-dim);font-size:12px;le
 footer a{color:var(--accent);text-decoration:none}
 .hidden{display:none}
 
+/* ---- Ship Designer ---- */
+.designer-controls{align-items:flex-end}
+.btn-reset{
+  background:transparent;color:var(--text-dim);
+  border:1px solid var(--panel-border);
+  font-family:'Orbitron',sans-serif;font-size:11px;letter-spacing:1.5px;
+  text-transform:uppercase;padding:10px 18px;cursor:pointer;border-radius:3px;
+  font-weight:700;
+}
+.btn-reset:hover{color:#fff;border-color:var(--hull);box-shadow:0 0 12px rgba(255,91,122,.25)}
+.designer-grid{
+  display:grid;grid-template-columns: 1.25fr 1fr;gap:22px;margin-top:8px;
+}
+@media (max-width:900px){ .designer-grid{grid-template-columns:1fr} }
+.dh{
+  font-family:'Orbitron',sans-serif;font-size:11px;letter-spacing:2.5px;
+  text-transform:uppercase;color:var(--accent);font-weight:700;
+  margin:16px 0 8px;padding-bottom:5px;
+  border-bottom:1px solid rgba(124,195,255,.25);
+}
+.slot-list{display:flex;flex-direction:column;gap:6px}
+.slot-row{
+  display:grid;grid-template-columns: 70px 1fr 100px;gap:8px;align-items:center;
+  padding:6px 10px;background:rgba(5,10,25,.55);
+  border:1px solid rgba(120,170,255,.1);border-radius:3px;
+}
+.slot-row:hover{border-color:rgba(124,195,255,.28)}
+.slot-tag{
+  font-family:'Orbitron',sans-serif;font-size:10px;letter-spacing:1.5px;
+  text-transform:uppercase;color:var(--text-dim);font-weight:700;
+  padding:4px 8px;text-align:center;border-radius:2px;
+  background:rgba(124,195,255,.09);border:1px solid rgba(124,195,255,.2);
+}
+.slot-tag.s{color:#9fd8ff}.slot-tag.m{color:#ffd489}.slot-tag.l{color:#ff9ab0}
+.slot-tag.x{color:#c8a0ff}.slot-tag.g,.slot-tag.h{color:#ffc4ff}
+.slot-tag.pd{color:#8bffb1}.slot-tag.t{color:#ffffff;background:rgba(176,128,255,.25);border-color:var(--accent-2)}
+.slot-row select{
+  width:100%;background:rgba(5,10,25,.85);color:var(--text);
+  border:1px solid var(--panel-border);padding:7px 9px;border-radius:3px;
+  font-family:'Rajdhani',sans-serif;font-size:13px;outline:none;
+}
+.slot-row select:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(124,195,255,.15)}
+.slot-cost{
+  text-align:right;font-variant-numeric:tabular-nums;
+  color:var(--text-dim);font-size:12px;
+}
+.slot-cost b{color:var(--warn);font-weight:600}
+
+.summary{
+  background:rgba(5,10,25,.55);
+  border:1px solid rgba(124,195,255,.18);
+  border-radius:4px;padding:18px 20px;
+}
+.sum-block{margin-bottom:18px}
+.sum-block:last-child{margin-bottom:0}
+.sum-title{
+  font-family:'Orbitron',sans-serif;font-size:10px;letter-spacing:2px;
+  text-transform:uppercase;color:var(--text-dim);margin-bottom:8px;
+}
+.stat-row{
+  display:flex;justify-content:space-between;align-items:baseline;
+  padding:5px 0;border-bottom:1px dashed rgba(124,195,255,.08);
+}
+.stat-row:last-child{border-bottom:none}
+.stat-row .k{color:var(--text-dim);font-size:13px}
+.stat-row .v{color:#fff;font-variant-numeric:tabular-nums;font-weight:600}
+.stat-row .v.accent{color:var(--accent)}
+.stat-row .v.warn{color:var(--warn)}
+.stat-row .v.neg{color:var(--hull)}
+.stat-row .v.good{color:var(--good)}
+.stat-row .v.shields{color:var(--shields)}
+.stat-row .v.armor{color:var(--armor)}
+.stat-row .v.hull{color:var(--hull)}
+.dmgbar{
+  height:7px;background:rgba(255,255,255,.04);border-radius:2px;overflow:hidden;
+  margin:4px 0 6px;
+}
+.dmgbar > span{display:block;height:100%}
+.dmgbar.s > span{background:linear-gradient(90deg,rgba(90,166,255,.3),var(--shields))}
+.dmgbar.a > span{background:linear-gradient(90deg,rgba(255,176,96,.3),var(--armor))}
+.dmgbar.h > span{background:linear-gradient(90deg,rgba(255,91,122,.3),var(--hull))}
+
+.ship-title{
+  font-family:'Orbitron',sans-serif;font-size:18px;letter-spacing:1.5px;
+  color:#fff;margin-bottom:2px;font-weight:700;
+}
+.ship-sub{color:var(--text-dim);font-size:12px;letter-spacing:1.2px;text-transform:uppercase;margin-bottom:14px}
+
 /* small-screen */
 @media (max-width:720px){
   .controls{gap:10px}
@@ -181,14 +269,48 @@ footer a{color:var(--accent);text-decoration:none}
 </header>
 
 <nav class="tabs">
-  <button class="tab active" data-tab="weapons">Weapons</button>
+  <button class="tab active" data-tab="designer">Ship Designer</button>
+  <button class="tab" data-tab="weapons">Weapons</button>
   <button class="tab" data-tab="utilities">Defense</button>
   <button class="tab" data-tab="auxiliaries">Auxiliary</button>
   <button class="tab" data-tab="ships">Ships</button>
 </nav>
 
+<!-- DESIGNER -->
+<section id="tab-designer" class="panel">
+  <div class="controls designer-controls">
+    <div class="field">
+      <label>Ship Class</label>
+      <select id="d-ship"></select>
+    </div>
+    <div class="field" id="d-sections-wrap">
+      <label>Sections</label>
+      <div class="chips" id="d-sections"></div>
+    </div>
+    <div class="field">
+      <label>&nbsp;</label>
+      <button class="btn-reset" id="d-reset">Clear Loadout</button>
+    </div>
+  </div>
+
+  <div class="designer-grid">
+    <div class="designer-col">
+      <h3 class="dh">Weapons</h3>
+      <div id="d-weapons" class="slot-list"></div>
+      <h3 class="dh">Utility</h3>
+      <div id="d-utility" class="slot-list"></div>
+      <h3 class="dh">Auxiliary</h3>
+      <div id="d-aux" class="slot-list"></div>
+    </div>
+    <div class="designer-col">
+      <h3 class="dh">Ship Summary</h3>
+      <div id="d-summary" class="summary"></div>
+    </div>
+  </div>
+</section>
+
 <!-- WEAPONS -->
-<section id="tab-weapons" class="panel">
+<section id="tab-weapons" class="panel hidden">
   <div class="controls">
     <div class="field">
       <label>Search</label>
@@ -352,6 +474,7 @@ footer a{color:var(--accent);text-decoration:none}
 </div>
 
 <script src="data.js"></script>
+<script src="sections.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
