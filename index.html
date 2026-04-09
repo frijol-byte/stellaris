@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Stellaris Damage Calculator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg-0:#05060d;
+  --bg-1:#0b0e1a;
+  --bg-2:#121633;
+  --panel:rgba(16,22,48,.78);
+  --panel-border:rgba(120,170,255,.18);
+  --accent:#7cc3ff;
+  --accent-2:#b080ff;
+  --accent-glow:#4ea8ff;
+  --text:#d9e6ff;
+  --text-dim:#8ba0c6;
+  --shields:#5aa6ff;
+  --armor:#ffb060;
+  --hull:#ff5b7a;
+  --good:#5dffb1;
+  --warn:#ffd166;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;min-height:100%;background:var(--bg-0);color:var(--text);font-family:'Rajdhani',system-ui,sans-serif;font-size:15px;letter-spacing:.2px}
+body{
+  background:
+    radial-gradient(ellipse at 20% -10%, rgba(124,195,255,.18), transparent 55%),
+    radial-gradient(ellipse at 85% 10%, rgba(176,128,255,.17), transparent 55%),
+    radial-gradient(ellipse at 50% 110%, rgba(90,166,255,.10), transparent 55%),
+    linear-gradient(180deg,#05060d 0%, #070a18 50%, #05060d 100%);
+  background-attachment:fixed;
+  min-height:100vh;
+  overflow-x:hidden;
+}
+#stars{position:fixed;inset:0;z-index:-1;pointer-events:none}
+.container{max-width:1400px;margin:0 auto;padding:28px 22px 80px}
+header.hero{
+  text-align:center;padding:48px 16px 32px;position:relative;
+}
+header.hero::before{
+  content:"";position:absolute;inset:auto 0 0 0;height:1px;
+  background:linear-gradient(90deg,transparent,var(--accent-glow),transparent);
+  opacity:.6;
+}
+h1{
+  font-family:'Orbitron',sans-serif;font-weight:900;
+  font-size:clamp(28px,4vw,52px);
+  margin:0 0 8px;letter-spacing:3px;
+  background:linear-gradient(120deg,#e9f3ff 0%, #7cc3ff 40%, #b080ff 70%, #e9f3ff 100%);
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+  text-shadow:0 0 40px rgba(124,195,255,.25);
+}
+.tagline{color:var(--text-dim);font-size:15px;letter-spacing:2px;text-transform:uppercase}
+
+.tabs{
+  display:flex;gap:4px;justify-content:center;flex-wrap:wrap;
+  margin:24px 0 22px;
+}
+.tab{
+  font-family:'Orbitron',sans-serif;font-weight:700;font-size:13px;letter-spacing:2px;
+  text-transform:uppercase;
+  background:transparent;border:1px solid var(--panel-border);color:var(--text-dim);
+  padding:11px 22px;cursor:pointer;border-radius:2px;
+  transition:all .2s ease;
+}
+.tab:hover{color:var(--text);border-color:var(--accent-glow);box-shadow:0 0 18px rgba(78,168,255,.25) inset}
+.tab.active{
+  color:#fff;
+  border-color:var(--accent);
+  background:linear-gradient(180deg,rgba(78,168,255,.22),rgba(78,168,255,.05));
+  box-shadow:0 0 24px rgba(78,168,255,.35), 0 0 0 1px rgba(124,195,255,.4) inset;
+}
+
+.panel{
+  background:var(--panel);
+  border:1px solid var(--panel-border);
+  border-radius:6px;
+  padding:20px 22px;
+  backdrop-filter: blur(8px);
+  box-shadow:0 0 60px rgba(78,168,255,.06), 0 0 0 1px rgba(255,255,255,.02) inset;
+}
+.controls{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;margin-bottom:18px}
+.field{display:flex;flex-direction:column;gap:6px}
+.field label{
+  font-family:'Orbitron',sans-serif;font-size:10px;letter-spacing:2px;
+  text-transform:uppercase;color:var(--text-dim);
+}
+.field input,.field select{
+  background:rgba(5,10,25,.85);
+  color:var(--text);
+  border:1px solid var(--panel-border);
+  padding:9px 12px;border-radius:3px;font-family:'Rajdhani',sans-serif;
+  font-size:14px;min-width:170px;outline:none;
+  transition:border-color .15s, box-shadow .15s;
+}
+.field input:focus,.field select:focus{
+  border-color:var(--accent);box-shadow:0 0 0 2px rgba(124,195,255,.18);
+}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{
+  font-size:12px;letter-spacing:1.5px;text-transform:uppercase;font-family:'Orbitron',sans-serif;
+  padding:7px 12px;border:1px solid var(--panel-border);border-radius:2px;
+  background:transparent;color:var(--text-dim);cursor:pointer;font-weight:700;
+}
+.chip.active{
+  color:#fff;background:rgba(78,168,255,.18);
+  border-color:var(--accent);box-shadow:0 0 12px rgba(78,168,255,.25);
+}
+.chip.shields.active{border-color:var(--shields);background:rgba(90,166,255,.18);box-shadow:0 0 12px rgba(90,166,255,.3)}
+.chip.armor.active{border-color:var(--armor);background:rgba(255,176,96,.18);box-shadow:0 0 12px rgba(255,176,96,.3)}
+.chip.hull.active{border-color:var(--hull);background:rgba(255,91,122,.18);box-shadow:0 0 12px rgba(255,91,122,.3)}
+
+.meta-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;color:var(--text-dim);font-size:13px}
+.meta-row b{color:var(--accent)}
+
+.table-wrap{overflow-x:auto;border:1px solid var(--panel-border);border-radius:4px}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th,td{padding:9px 12px;text-align:right;white-space:nowrap;border-bottom:1px solid rgba(120,170,255,.08)}
+th:first-child,td:first-child,th.l,td.l{text-align:left}
+thead th{
+  position:sticky;top:0;z-index:1;
+  background:linear-gradient(180deg,#0e1530,#0a1024);
+  font-family:'Orbitron',sans-serif;font-size:10.5px;letter-spacing:1.5px;
+  text-transform:uppercase;color:var(--accent);font-weight:700;
+  border-bottom:1px solid rgba(124,195,255,.35);
+  cursor:pointer;user-select:none;
+}
+thead th:hover{color:#fff;background:linear-gradient(180deg,#12204a,#0e1833)}
+thead th.sorted{color:#fff}
+thead th.sorted::after{content:" ▾";color:var(--accent-glow)}
+thead th.sorted.asc::after{content:" ▴"}
+tbody tr:hover{background:rgba(78,168,255,.06)}
+tbody tr.size-s td:nth-child(2){color:#9fd8ff}
+tbody tr.size-m td:nth-child(2){color:#ffd489}
+tbody tr.size-l td:nth-child(2){color:#ff9ab0}
+tbody tr.size-xl td:nth-child(2){color:#c8a0ff}
+td.num{font-variant-numeric:tabular-nums}
+.bar-cell{position:relative}
+.bar-cell .bar{
+  position:absolute;left:0;top:0;bottom:0;background:rgba(124,195,255,.12);
+  z-index:0;border-right:1px solid rgba(124,195,255,.25);
+}
+.bar-cell.shields .bar{background:rgba(90,166,255,.18);border-color:rgba(90,166,255,.4)}
+.bar-cell.armor .bar{background:rgba(255,176,96,.18);border-color:rgba(255,176,96,.4)}
+.bar-cell.hull .bar{background:rgba(255,91,122,.18);border-color:rgba(255,91,122,.4)}
+.bar-cell .v{position:relative;z-index:1}
+
+.wname{font-weight:700;color:#fff}
+.wfamily{color:var(--text-dim);font-size:11px;letter-spacing:1px;text-transform:uppercase}
+
+.legend{display:flex;gap:18px;flex-wrap:wrap;margin-top:14px;color:var(--text-dim);font-size:12px}
+.legend .dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:middle}
+.legend .s{background:var(--shields)}
+.legend .a{background:var(--armor)}
+.legend .h{background:var(--hull)}
+
+footer{text-align:center;margin-top:46px;color:var(--text-dim);font-size:12px;letter-spacing:1.5px}
+footer a{color:var(--accent);text-decoration:none}
+.hidden{display:none}
+
+/* small-screen */
+@media (max-width:720px){
+  .controls{gap:10px}
+  .field input,.field select{min-width:140px}
+  th,td{padding:7px 8px;font-size:12.5px}
+}
+</style>
+</head>
+<body>
+<canvas id="stars"></canvas>
+
+<div class="container">
+<header class="hero">
+  <h1>STELLARIS DAMAGE CALCULATOR</h1>
+  <div class="tagline">Weapon · Defense · Ship Module Comparison</div>
+</header>
+
+<nav class="tabs">
+  <button class="tab active" data-tab="weapons">Weapons</button>
+  <button class="tab" data-tab="utilities">Defense</button>
+  <button class="tab" data-tab="auxiliaries">Auxiliary</button>
+  <button class="tab" data-tab="ships">Ships</button>
+</nav>
+
+<!-- WEAPONS -->
+<section id="tab-weapons" class="panel">
+  <div class="controls">
+    <div class="field">
+      <label>Search</label>
+      <input id="w-search" type="text" placeholder="Red Laser, Tachyon…">
+    </div>
+    <div class="field">
+      <label>Size</label>
+      <div class="chips" id="w-size">
+        <button class="chip active" data-v="all">All</button>
+        <button class="chip" data-v="Small">S</button>
+        <button class="chip" data-v="Medium">M</button>
+        <button class="chip" data-v="Large">L</button>
+        <button class="chip" data-v="X-Large">X</button>
+        <button class="chip" data-v="Guided">G</button>
+        <button class="chip" data-v="Hangar">H</button>
+        <button class="chip" data-v="PD">PD</button>
+        <button class="chip" data-v="Titan">T</button>
+      </div>
+    </div>
+    <div class="field">
+      <label>Target</label>
+      <div class="chips" id="w-target">
+        <button class="chip shields active" data-v="shields">Shields</button>
+        <button class="chip armor" data-v="armor">Armor</button>
+        <button class="chip hull" data-v="hull">Hull</button>
+      </div>
+    </div>
+    <div class="field">
+      <label>Metric</label>
+      <div class="chips" id="w-metric">
+        <button class="chip active" data-v="avg">Avg DPS</button>
+        <button class="chip" data-v="d1">Day 1</button>
+        <button class="chip" data-v="slot">Per Slot</button>
+        <button class="chip" data-v="res">Per Alloy</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="meta-row">
+    <div>Showing <b id="w-count">0</b> weapons · click column headers to sort</div>
+    <div id="w-metric-label"></div>
+  </div>
+
+  <div class="table-wrap">
+    <table id="w-table">
+      <thead>
+        <tr>
+          <th class="l" data-sort="name">Weapon</th>
+          <th data-sort="size">Size</th>
+          <th data-sort="cost_alloys">Alloys</th>
+          <th data-sort="power">Power</th>
+          <th data-sort="dpd">DPD</th>
+          <th data-sort="cooldown">CD</th>
+          <th data-sort="max_range">Rng</th>
+          <th data-sort="accuracy">Acc</th>
+          <th data-sort="tracking">Trk</th>
+          <th data-sort="vs_shields">vS</th>
+          <th data-sort="vs_armor">vA</th>
+          <th data-sort="vs_hull">vH</th>
+          <th data-sort="metric" class="sorted">Score</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <div class="legend">
+    <span><span class="dot s"></span>Shield damage</span>
+    <span><span class="dot a"></span>Armor damage</span>
+    <span><span class="dot h"></span>Hull damage</span>
+    <span>Avg DPS = damage/day with accuracy · Day 1 = opening salvo</span>
+  </div>
+</section>
+
+<!-- UTILITIES -->
+<section id="tab-utilities" class="panel hidden">
+  <div class="controls">
+    <div class="field">
+      <label>Search</label>
+      <input id="u-search" type="text" placeholder="Shields, armor…">
+    </div>
+    <div class="field">
+      <label>Size</label>
+      <div class="chips" id="u-size">
+        <button class="chip active" data-v="all">All</button>
+        <button class="chip" data-v="Small">S</button>
+        <button class="chip" data-v="Medium">M</button>
+        <button class="chip" data-v="Large">L</button>
+      </div>
+    </div>
+  </div>
+  <div class="meta-row"><div>Showing <b id="u-count">0</b> defense modules</div></div>
+  <div class="table-wrap">
+    <table id="u-table">
+      <thead><tr>
+        <th class="l" data-sort="name">Component</th>
+        <th data-sort="size">Size</th>
+        <th data-sort="cost_alloys">Alloys</th>
+        <th data-sort="power">Power</th>
+        <th data-sort="shields">Shields</th>
+        <th data-sort="regen">Regen</th>
+        <th data-sort="shield_hardening">SH Hard</th>
+        <th data-sort="armor">Armor</th>
+        <th data-sort="armor_hardening">AR Hard</th>
+        <th data-sort="hull">Hull</th>
+      </tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</section>
+
+<!-- AUX -->
+<section id="tab-auxiliaries" class="panel hidden">
+  <div class="meta-row"><div>Auxiliary modules</div></div>
+  <div class="table-wrap">
+    <table id="a-table">
+      <thead><tr>
+        <th class="l" data-sort="name">Component</th>
+        <th data-sort="cost_alloys">Alloys</th>
+        <th data-sort="add_cost">+Cost</th>
+        <th class="l" data-sort="add_res">Resource</th>
+        <th data-sort="power">Power</th>
+        <th data-sort="evasion">Evasion</th>
+        <th data-sort="armor_hardening">AR Hard</th>
+        <th data-sort="shield_hardening">SH Hard</th>
+        <th data-sort="chance_hit">+Hit</th>
+        <th data-sort="tracking">Tracking</th>
+        <th data-sort="armor_hp">Armor HP</th>
+      </tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</section>
+
+<!-- SHIPS -->
+<section id="tab-ships" class="panel hidden">
+  <div class="meta-row"><div>Ship classes &amp; base stats</div></div>
+  <div class="table-wrap">
+    <table id="s-table">
+      <thead><tr>
+        <th class="l" data-sort="type">Ship</th>
+        <th data-sort="sections">Sections</th>
+        <th data-sort="command_points">CP</th>
+        <th data-sort="base_cost">Alloy Cost</th>
+        <th data-sort="build_time">Build</th>
+        <th data-sort="slots_w">Slot Eq.</th>
+        <th data-sort="base_hull">Hull</th>
+        <th data-sort="base_evasion">Evasion</th>
+        <th data-sort="base_speed">Speed</th>
+        <th data-sort="disengage">Disengage</th>
+      </tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</section>
+
+<footer>
+  Data from the Stellaris Damage Calcs spreadsheet · Built for GitHub Pages<br>
+  <span style="opacity:.6">Stellaris © Paradox Interactive. This is an unofficial fan tool.</span>
+</footer>
+</div>
+
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
