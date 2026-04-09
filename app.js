@@ -287,9 +287,9 @@
   const dState = {
     shipClass: 'Corvette',
     sectionChoice: {}, // groupId -> option name
-    weaponLoadout: [], // parallel to current slot list: array of {slotCode, weaponIndex|null}
-    utilityLoadout: {Small:[], Medium:[], Large:[]}, // arrays of util index|null
-    auxLoadout: [],
+    weaponLoadout: [], // {code, idx, groupId}
+    utilityLoadout: {Small:[], Medium:[], Large:[]}, // each entry: {idx, groupId}
+    auxLoadout: [], // each entry: {idx, groupId}
   };
 
   const $ship = document.getElementById('d-ship');
@@ -314,26 +314,36 @@
     resetLoadout(); renderDesigner();
   });
 
+  function chosenOptions(){
+    const ship = SHIPS[dState.shipClass];
+    return ship.groups.map(g=>({
+      group: g,
+      option: g.options.find(o=>o.name===dState.sectionChoice[g.id]) || g.options[0],
+    }));
+  }
+
   function resetLoadout(){
     const ship = SHIPS[dState.shipClass];
     dState.sectionChoice = {};
     ship.groups.forEach(g=>{ dState.sectionChoice[g.id] = g.options[0].name; });
-    dState.weaponLoadout = currentWeaponSlots().map(code=>({code, idx:null}));
-    dState.utilityLoadout = {Small:[], Medium:[], Large:[]};
-    Object.entries(ship.slots.utility).forEach(([size,n])=>{
-      for(let i=0;i<n;i++) dState.utilityLoadout[size].push(null);
-    });
-    dState.auxLoadout = Array.from({length:ship.slots.aux}, ()=>null);
+    rebuildSlotsFromSections();
   }
 
-  function currentWeaponSlots(){
-    const ship = SHIPS[dState.shipClass];
-    const codes = [];
-    ship.groups.forEach(g=>{
-      const chosen = g.options.find(o=>o.name===dState.sectionChoice[g.id]) || g.options[0];
-      chosen.weapons.forEach(c=>codes.push(c));
+  function rebuildSlotsFromSections(){
+    dState.weaponLoadout = [];
+    dState.utilityLoadout = {Small:[], Medium:[], Large:[]};
+    dState.auxLoadout = [];
+    chosenOptions().forEach(({group, option})=>{
+      option.weapons.forEach(code=>{
+        dState.weaponLoadout.push({ code, idx: null, groupId: group.id });
+      });
+      Object.entries(option.utility||{}).forEach(([size, n])=>{
+        for(let i=0;i<n;i++) dState.utilityLoadout[size].push({ idx: null, groupId: group.id });
+      });
+      for(let i=0;i<(option.aux||0);i++){
+        dState.auxLoadout.push({ idx: null, groupId: group.id });
+      }
     });
-    return codes;
   }
 
   function renderDesigner(){
@@ -355,7 +365,7 @@
         b.textContent = o.name;
         b.addEventListener('click', ()=>{
           dState.sectionChoice[g.id] = o.name;
-          dState.weaponLoadout = currentWeaponSlots().map(code=>({code, idx:null}));
+          rebuildSlotsFromSections();
           renderDesigner();
         });
         wrap.appendChild(b);
@@ -365,8 +375,12 @@
 
     // Weapon slots
     $weapons.innerHTML = '';
-    dState.weaponLoadout.forEach((slot,i)=>{
-      const row = buildSlotRow(slot.code, weaponsBySize[SLOT_TO_SIZE[slot.code]]||[], slot.idx, (newIdx)=>{
+    if(dState.weaponLoadout.length===0){
+      $weapons.innerHTML = '<div style="color:var(--text-dim);font-size:12px">No weapon slots.</div>';
+    }
+    dState.weaponLoadout.forEach((slot)=>{
+      const items = weaponsBySize[SLOT_TO_SIZE[slot.code]] || [];
+      const row = buildSlotRow(slot.code, items, slot.idx, (newIdx)=>{
         slot.idx = newIdx;
         updateSummary();
       });
@@ -375,23 +389,29 @@
 
     // Utility slots
     $utility.innerHTML = '';
+    let hasUtil = false;
     ['Small','Medium','Large'].forEach(size=>{
       const arr = dState.utilityLoadout[size];
-      arr.forEach((idx,i)=>{
+      arr.forEach((slot)=>{
+        hasUtil = true;
         const code = {Small:'S',Medium:'M',Large:'L'}[size];
-        const row = buildSlotRow(code, utilsBySize[size], idx, (newIdx)=>{
-          arr[i] = newIdx;
+        const row = buildSlotRow(code, utilsBySize[size], slot.idx, (newIdx)=>{
+          slot.idx = newIdx;
           updateSummary();
         }, 'util');
         $utility.appendChild(row);
       });
     });
+    if(!hasUtil) $utility.innerHTML = '<div style="color:var(--text-dim);font-size:12px">No utility slots.</div>';
 
     // Aux slots
     $aux.innerHTML = '';
-    dState.auxLoadout.forEach((idx,i)=>{
-      const row = buildSlotRow('A', auxList, idx, (newIdx)=>{
-        dState.auxLoadout[i] = newIdx;
+    if(dState.auxLoadout.length===0){
+      $aux.innerHTML = '<div style="color:var(--text-dim);font-size:12px">No auxiliary slots.</div>';
+    }
+    dState.auxLoadout.forEach((slot)=>{
+      const row = buildSlotRow('A', auxList, slot.idx, (newIdx)=>{
+        slot.idx = newIdx;
         updateSummary();
       }, 'aux');
       $aux.appendChild(row);
@@ -400,15 +420,16 @@
     updateSummary();
   }
 
-  function buildSlotRow(code, items, selectedIdx, onChange, kind){
+  function buildSlotRow(code, items, selectedIdx, onChange, kind, groupId){
     const row = document.createElement('div');
     row.className = 'slot-row';
     const tag = document.createElement('div');
     tag.className = 'slot-tag ' + code.toLowerCase();
     tag.textContent = code==='A' ? 'AUX' : code;
+    if(groupId){ tag.title = groupId; }
     const sel = document.createElement('select');
     const empty = document.createElement('option');
-    empty.value=''; empty.textContent='— Empty —';
+    empty.value=''; empty.textContent = items.length ? '— Empty —' : '— No modules of this type —';
     sel.appendChild(empty);
     items.forEach((it,i)=>{
       const o = document.createElement('option');
@@ -457,12 +478,10 @@
 
     // Utility aggregation
     ['Small','Medium','Large'].forEach(size=>{
-      dState.utilityLoadout[size].forEach(idx=>{
-        if(idx==null) return;
-        const u = utilsBySize[size][idx]; if(!u) return;
+      dState.utilityLoadout[size].forEach(slot=>{
+        if(slot.idx==null) return;
+        const u = utilsBySize[size][slot.idx]; if(!u) return;
         cost += u.cost_alloys||0;
-        // Shield/armor components are negative power, reactors positive
-        // Most utils here consume power (shields/armor both require power except armor = 0)
         power -= u.power||0;
         shields += u.shields||0;
         shieldRegen += u.regen||0;
@@ -475,9 +494,9 @@
     });
 
     // Aux aggregation
-    dState.auxLoadout.forEach(idx=>{
-      if(idx==null) return;
-      const a = auxList[idx]; if(!a) return;
+    dState.auxLoadout.forEach(slot=>{
+      if(slot.idx==null) return;
+      const a = auxList[slot.idx]; if(!a) return;
       cost += a.cost_alloys||0;
       power -= a.power||0;
       evasionBonus += a.evasion||0;
