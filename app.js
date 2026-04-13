@@ -264,7 +264,7 @@
     defaultSort:'name', defaultDir:'asc',
   });
 
-  /* ---------- Ship Designer tab ---------- */
+  /* ---------- Ship Designer tab (drag-and-drop) ---------- */
   const SHIPS = window.SHIP_SECTIONS;
   const SLOT_TO_SIZE = window.SLOT_TO_SIZE;
   const SLOT_LABEL = window.SLOT_LABEL;
@@ -277,7 +277,6 @@
   Object.keys(weaponsBySize).forEach(k=>{
     weaponsBySize[k].sort((a,b)=>(a.name||'').localeCompare(b.name||'') || (a.cost_alloys||0)-(b.cost_alloys||0));
   });
-  // Utilities by size (for utility slots)
   const utilsBySize = {Small:[],Medium:[],Large:[]};
   D.utilities.forEach(u=>{ if(utilsBySize[u.size]) utilsBySize[u.size].push(u); });
   Object.keys(utilsBySize).forEach(k=>utilsBySize[k].sort((a,b)=>(a.name||'').localeCompare(b.name||'')));
@@ -286,10 +285,14 @@
 
   const dState = {
     shipClass: 'Corvette',
-    sectionChoice: {}, // groupId -> option name
-    weaponLoadout: [], // {code, idx, groupId}
-    utilityLoadout: {Small:[], Medium:[], Large:[]}, // each entry: {idx, groupId}
-    auxLoadout: [], // each entry: {idx, groupId}
+    sectionChoice: {},           // groupId -> option name
+    weaponLoadout: [],           // [{code, idx, groupId}]
+    utilityLoadout: {Small:[], Medium:[], Large:[]}, // [{idx, groupId}]
+    auxLoadout: [],              // [{idx, groupId}]
+    palette: 'weapons',          // 'weapons' | 'utility' | 'aux'
+    paletteSize: 'all',
+    paletteSearch: '',
+    picked: null,                // click-to-place: {type, size, idx}
   };
 
   const $ship = document.getElementById('d-ship');
@@ -298,6 +301,10 @@
   const $utility = document.getElementById('d-utility');
   const $aux = document.getElementById('d-aux');
   const $summary = document.getElementById('d-summary');
+  const $palette = document.getElementById('d-palette');
+  const $palSize = document.getElementById('pal-size');
+  const $palSearch = document.getElementById('pal-search');
+  const $palHint = document.getElementById('pal-hint');
 
   // Populate ship class dropdown
   Object.keys(SHIPS).forEach(name=>{
@@ -314,6 +321,29 @@
     resetLoadout(); renderDesigner();
   });
 
+  // Palette tab switching
+  document.querySelectorAll('.pal-tab').forEach(t=>{
+    t.addEventListener('click', ()=>{
+      document.querySelectorAll('.pal-tab').forEach(x=>x.classList.remove('active'));
+      t.classList.add('active');
+      dState.palette = t.dataset.pal;
+      dState.paletteSize = 'all';
+      dState.picked = null;
+      renderPaletteSizes();
+      renderPalette();
+      refreshPickedUI();
+    });
+  });
+  $palSearch.addEventListener('input', ()=>{
+    dState.paletteSearch = $palSearch.value;
+    renderPalette();
+  });
+
+  function sizeCode(size){
+    return {Small:'S',Medium:'M',Large:'L','X-Large':'X',Guided:'G',Hangar:'H',PD:'PD',Titan:'T'}[size] || '';
+  }
+  function sizeCodeClass(size){ return (sizeCode(size)||'').toLowerCase(); }
+
   function chosenOptions(){
     const ship = SHIPS[dState.shipClass];
     return ship.groups.map(g=>({
@@ -326,6 +356,7 @@
     const ship = SHIPS[dState.shipClass];
     dState.sectionChoice = {};
     ship.groups.forEach(g=>{ dState.sectionChoice[g.id] = g.options[0].name; });
+    dState.picked = null;
     rebuildSlotsFromSections();
   }
 
@@ -338,7 +369,7 @@
         dState.weaponLoadout.push({ code, idx: null, groupId: group.id });
       });
       Object.entries(option.utility||{}).forEach(([sizeCode, n])=>{
-        const size = SLOT_TO_SIZE[sizeCode] || sizeCode; // 'S' -> 'Small', etc.
+        const size = SLOT_TO_SIZE[sizeCode] || sizeCode; // 'S' -> 'Small'
         if(!dState.utilityLoadout[size]) return;
         for(let i=0;i<n;i++) dState.utilityLoadout[size].push({ idx: null, groupId: group.id });
       });
@@ -348,10 +379,282 @@
     });
   }
 
-  function renderDesigner(){
-    const ship = SHIPS[dState.shipClass];
+  /* ---- Palette rendering ---- */
+  function renderPaletteSizes(){
+    $palSize.innerHTML = '';
+    let sizes;
+    if(dState.palette==='weapons'){
+      sizes = [['all','All'],['Small','S'],['Medium','M'],['Large','L'],['X-Large','X'],
+               ['Guided','G'],['Hangar','H'],['PD','PD'],['Titan','T']];
+    } else if(dState.palette==='utility'){
+      sizes = [['all','All'],['Small','S'],['Medium','M'],['Large','L']];
+    } else {
+      return; // aux: no size filter
+    }
+    sizes.forEach(([v,l])=>{
+      const b = document.createElement('button');
+      b.className = 'chip' + (dState.paletteSize===v?' active':'');
+      b.dataset.v = v; b.textContent = l;
+      b.addEventListener('click', ()=>{
+        dState.paletteSize = v;
+        $palSize.querySelectorAll('.chip').forEach(x=>x.classList.remove('active'));
+        b.classList.add('active');
+        renderPalette();
+      });
+      $palSize.appendChild(b);
+    });
+  }
 
-    // Section picker: one chip row per group
+  function paletteItems(){
+    const q = (dState.paletteSearch||'').trim().toLowerCase();
+    const nameOk = n => !q || (n||'').toLowerCase().includes(q);
+    const out = [];
+    if(dState.palette==='weapons'){
+      Object.entries(weaponsBySize).forEach(([sz, arr])=>{
+        if(dState.paletteSize!=='all' && dState.paletteSize!==sz) return;
+        arr.forEach((it,i)=>{ if(nameOk(it.name)) out.push({type:'weapon', size:sz, idx:i, item:it}); });
+      });
+    } else if(dState.palette==='utility'){
+      Object.entries(utilsBySize).forEach(([sz, arr])=>{
+        if(dState.paletteSize!=='all' && dState.paletteSize!==sz) return;
+        arr.forEach((it,i)=>{ if(nameOk(it.name)) out.push({type:'utility', size:sz, idx:i, item:it}); });
+      });
+    } else {
+      auxList.forEach((it,i)=>{ if(nameOk(it.name)) out.push({type:'aux', size:null, idx:i, item:it}); });
+    }
+    return out;
+  }
+
+  function renderPalette(){
+    $palette.innerHTML = '';
+    const items = paletteItems();
+    if(items.length===0){
+      $palette.innerHTML = '<div class="pal-empty">No components match.</div>';
+      return;
+    }
+    items.forEach(rec=>{
+      const el = document.createElement('div');
+      el.className = 'pal-card';
+      el.draggable = true;
+      el.dataset.type = rec.type;
+      if(rec.size) el.dataset.size = rec.size;
+      el.dataset.idx = rec.idx;
+      if(isPicked(rec)) el.classList.add('picked');
+
+      const it = rec.item;
+      const szTag = rec.size
+        ? `<span class="slot-tag ${sizeCodeClass(rec.size)}">${sizeCode(rec.size)}</span>`
+        : '<span class="slot-tag a">AUX</span>';
+      let stats;
+      if(rec.type==='weapon'){
+        stats = `${it.cost_alloys||0}a · ${it.power||0}⚡ · DPD ${fmt(it.dpd||0,2)}`;
+      } else if(rec.type==='utility'){
+        const bits = [];
+        if(it.shields) bits.push('S '+it.shields);
+        if(it.armor)   bits.push('A '+it.armor);
+        if(it.hull)    bits.push('H '+it.hull);
+        if(it.regen)   bits.push('r '+it.regen);
+        stats = `${it.cost_alloys||0}a · ${it.power||0}⚡${bits.length?' · '+bits.join(' / '):''}`;
+      } else {
+        const bits = [];
+        if(it.evasion)   bits.push('+'+(it.evasion*100).toFixed(0)+'% ev');
+        if(it.armor_hp)  bits.push('Arm '+it.armor_hp);
+        if(it.tracking)  bits.push('+'+(it.tracking*100).toFixed(0)+'% trk');
+        if(it.chance_hit)bits.push('+'+(it.chance_hit*100).toFixed(0)+'% hit');
+        stats = `${it.cost_alloys||0}a · ${it.power||0}⚡${bits.length?' · '+bits.join(' / '):''}`;
+      }
+      el.innerHTML = `
+        <div class="pc-head">${szTag}<span class="pc-name">${it.name||'?'}</span></div>
+        <div class="pc-stats">${stats}</div>
+      `;
+
+      el.addEventListener('dragstart', (e)=>{
+        const payload = {type:rec.type, size:rec.size||null, idx:rec.idx};
+        e.dataTransfer.setData('text/plain', JSON.stringify(payload));
+        e.dataTransfer.effectAllowed = 'copy';
+        el.classList.add('dragging');
+        document.body.classList.add('drag-active');
+        highlightAcceptingSlots(payload, true);
+      });
+      el.addEventListener('dragend', ()=>{
+        el.classList.remove('dragging');
+        document.body.classList.remove('drag-active');
+        highlightAcceptingSlots(null, false);
+      });
+      el.addEventListener('click', ()=>{
+        if(isPicked(rec)) dState.picked = null;
+        else dState.picked = {type:rec.type, size:rec.size||null, idx:rec.idx};
+        refreshPickedUI();
+      });
+
+      $palette.appendChild(el);
+    });
+  }
+
+  function isPicked(rec){
+    const p = dState.picked;
+    return !!(p && p.type===rec.type && p.idx===rec.idx && (p.size||null)===(rec.size||null));
+  }
+
+  function lookupItem(payload){
+    if(!payload) return null;
+    if(payload.type==='weapon')  return (weaponsBySize[payload.size]||[])[payload.idx];
+    if(payload.type==='utility') return (utilsBySize[payload.size]||[])[payload.idx];
+    if(payload.type==='aux')     return auxList[payload.idx];
+    return null;
+  }
+
+  function highlightAcceptingSlots(payload, on){
+    document.querySelectorAll('.slot-row').forEach(s=>{
+      s.classList.remove('accepts');
+      if(on && slotAcceptsPayload(s.dataset, payload)) s.classList.add('accepts');
+    });
+  }
+
+  function refreshPickedUI(){
+    $palette.querySelectorAll('.pal-card').forEach(card=>{
+      const rec = {
+        type: card.dataset.type,
+        size: card.dataset.size || null,
+        idx: Number(card.dataset.idx),
+      };
+      card.classList.toggle('picked', isPicked(rec));
+    });
+    const p = dState.picked;
+    if(p){
+      const it = lookupItem(p);
+      $palHint.classList.add('on');
+      $palHint.textContent = it
+        ? `Holding ${it.name} — tap a matching slot to place (tap again to drop).`
+        : 'Tap a matching slot to place.';
+    } else {
+      $palHint.classList.remove('on');
+      $palHint.textContent = 'Drag a component onto a slot — or tap to pick up and then tap a slot.';
+    }
+    highlightAcceptingSlots(p, !!p);
+  }
+
+  /* ---- Slot rendering ---- */
+  function slotAcceptsPayload(ds, payload){
+    if(!ds || !payload) return false;
+    if(ds.slotKind==='weapon'){
+      if(payload.type!=='weapon') return false;
+      return payload.size===SLOT_TO_SIZE[ds.slotCode];
+    }
+    if(ds.slotKind==='utility'){
+      if(payload.type!=='utility') return false;
+      return payload.size===ds.slotSize;
+    }
+    if(ds.slotKind==='aux'){
+      return payload.type==='aux';
+    }
+    return false;
+  }
+
+  function resolveSlotRef(slotEl){
+    const kind = slotEl.dataset.slotKind;
+    if(kind==='weapon') return dState.weaponLoadout[Number(slotEl.dataset.slotIndex)];
+    if(kind==='utility') return dState.utilityLoadout[slotEl.dataset.slotSize][Number(slotEl.dataset.slotSubIndex)];
+    if(kind==='aux') return dState.auxLoadout[Number(slotEl.dataset.slotIndex)];
+    return null;
+  }
+
+  function applyPayload(slotEl, payload){
+    if(!slotAcceptsPayload(slotEl.dataset, payload)) return false;
+    const ref = resolveSlotRef(slotEl);
+    if(!ref) return false;
+    ref.idx = payload.idx;
+    renderSlotsOnly();
+    updateSummary();
+    return true;
+  }
+
+  function clearSlot(slotEl){
+    const ref = resolveSlotRef(slotEl);
+    if(!ref) return;
+    ref.idx = null;
+    renderSlotsOnly();
+    updateSummary();
+  }
+
+  function buildSlot(kind, code, size, listItems, slotRef, groupId, indexInList, subIndex){
+    const row = document.createElement('div');
+    row.className = 'slot-row';
+    row.dataset.slotKind = kind;
+    if(code) row.dataset.slotCode = code;
+    if(size) row.dataset.slotSize = size;
+    if(indexInList!=null) row.dataset.slotIndex = String(indexInList);
+    if(subIndex!=null)    row.dataset.slotSubIndex = String(subIndex);
+
+    const tagCode = kind==='aux' ? 'A' : code;
+    const tag = document.createElement('div');
+    tag.className = 'slot-tag ' + (tagCode||'').toLowerCase();
+    tag.textContent = kind==='aux' ? 'AUX' : tagCode;
+    if(groupId) tag.title = groupId;
+
+    const body = document.createElement('div');
+    body.className = 'slot-body';
+    const hasItem = slotRef.idx!=null && listItems[slotRef.idx];
+    if(!hasItem){
+      body.classList.add('empty');
+      const placeholder = listItems.length
+        ? (kind==='aux' ? 'Drop auxiliary here'
+           : kind==='utility' ? 'Drop '+size+' utility here'
+           : 'Drop '+(SLOT_TO_SIZE[code]||code)+' weapon here')
+        : '— No modules of this type —';
+      body.innerHTML = `<span class="slot-placeholder">${placeholder}</span>`;
+    } else {
+      const it = listItems[slotRef.idx];
+      body.innerHTML = `
+        <span class="sf-name">${it.name||'?'}</span>
+        <span class="sf-stats">${(it.cost_alloys||0)}a · ${(it.power||0)}⚡</span>
+      `;
+    }
+
+    const clear = document.createElement('button');
+    clear.className = 'slot-clear';
+    clear.textContent = '×';
+    clear.title = 'Clear slot';
+    if(!hasItem) clear.style.visibility = 'hidden';
+    clear.addEventListener('click', (e)=>{ e.stopPropagation(); clearSlot(row); });
+
+    row.appendChild(tag);
+    row.appendChild(body);
+    row.appendChild(clear);
+
+    row.addEventListener('dragover', (e)=>{
+      e.preventDefault();
+      row.classList.add('hot');
+    });
+    row.addEventListener('dragleave', ()=>{ row.classList.remove('hot'); });
+    row.addEventListener('drop', (e)=>{
+      e.preventDefault();
+      row.classList.remove('hot');
+      try{
+        const payload = JSON.parse(e.dataTransfer.getData('text/plain'));
+        if(!applyPayload(row, payload)){
+          row.classList.add('reject');
+          setTimeout(()=>row.classList.remove('reject'), 400);
+        }
+      }catch(err){}
+    });
+
+    row.addEventListener('click', ()=>{
+      if(dState.picked){
+        if(!applyPayload(row, dState.picked)){
+          row.classList.add('reject');
+          setTimeout(()=>row.classList.remove('reject'), 400);
+        }
+      } else if(hasItem){
+        clearSlot(row);
+      }
+    });
+
+    return row;
+  }
+
+  function renderSections(){
+    const ship = SHIPS[dState.shipClass];
     $sections.innerHTML = '';
     ship.groups.forEach(g=>{
       const wrap = document.createElement('div');
@@ -374,88 +677,50 @@
       });
       $sections.appendChild(wrap);
     });
+  }
 
-    // Weapon slots
+  function renderSlotsOnly(){
     $weapons.innerHTML = '';
     if(dState.weaponLoadout.length===0){
-      $weapons.innerHTML = '<div style="color:var(--text-dim);font-size:12px">No weapon slots.</div>';
-    }
-    dState.weaponLoadout.forEach((slot)=>{
-      const items = weaponsBySize[SLOT_TO_SIZE[slot.code]] || [];
-      const row = buildSlotRow(slot.code, items, slot.idx, (newIdx)=>{
-        slot.idx = newIdx;
-        updateSummary();
+      $weapons.innerHTML = '<div class="slot-empty-note">No weapon slots.</div>';
+    } else {
+      dState.weaponLoadout.forEach((slot, i)=>{
+        const list = weaponsBySize[SLOT_TO_SIZE[slot.code]] || [];
+        $weapons.appendChild(buildSlot('weapon', slot.code, null, list, slot, slot.groupId, i, null));
       });
-      $weapons.appendChild(row);
-    });
+    }
 
-    // Utility slots
     $utility.innerHTML = '';
     let hasUtil = false;
     ['Small','Medium','Large'].forEach(size=>{
-      const arr = dState.utilityLoadout[size];
-      arr.forEach((slot)=>{
+      dState.utilityLoadout[size].forEach((slot, subI)=>{
         hasUtil = true;
         const code = {Small:'S',Medium:'M',Large:'L'}[size];
-        const row = buildSlotRow(code, utilsBySize[size], slot.idx, (newIdx)=>{
-          slot.idx = newIdx;
-          updateSummary();
-        }, 'util');
-        $utility.appendChild(row);
+        $utility.appendChild(buildSlot('utility', code, size, utilsBySize[size], slot, slot.groupId, null, subI));
       });
     });
-    if(!hasUtil) $utility.innerHTML = '<div style="color:var(--text-dim);font-size:12px">No utility slots.</div>';
+    if(!hasUtil) $utility.innerHTML = '<div class="slot-empty-note">No utility slots.</div>';
 
-    // Aux slots
     $aux.innerHTML = '';
     if(dState.auxLoadout.length===0){
-      $aux.innerHTML = '<div style="color:var(--text-dim);font-size:12px">No auxiliary slots.</div>';
+      $aux.innerHTML = '<div class="slot-empty-note">No auxiliary slots.</div>';
+    } else {
+      dState.auxLoadout.forEach((slot, i)=>{
+        $aux.appendChild(buildSlot('aux', null, null, auxList, slot, slot.groupId, i, null));
+      });
     }
-    dState.auxLoadout.forEach((slot)=>{
-      const row = buildSlotRow('A', auxList, slot.idx, (newIdx)=>{
-        slot.idx = newIdx;
-        updateSummary();
-      }, 'aux');
-      $aux.appendChild(row);
-    });
 
-    updateSummary();
+    // Re-apply accept highlights if something is picked
+    if(dState.picked) highlightAcceptingSlots(dState.picked, true);
   }
 
-  function buildSlotRow(code, items, selectedIdx, onChange, kind, groupId){
-    const row = document.createElement('div');
-    row.className = 'slot-row';
-    const tag = document.createElement('div');
-    tag.className = 'slot-tag ' + code.toLowerCase();
-    tag.textContent = code==='A' ? 'AUX' : code;
-    if(groupId){ tag.title = groupId; }
-    const sel = document.createElement('select');
-    const empty = document.createElement('option');
-    empty.value=''; empty.textContent = items.length ? '— Empty —' : '— No modules of this type —';
-    sel.appendChild(empty);
-    items.forEach((it,i)=>{
-      const o = document.createElement('option');
-      o.value = i;
-      const sz = it.size ? ' ('+({Small:'S',Medium:'M',Large:'L','X-Large':'X',Guided:'G',Hangar:'H',PD:'PD',Titan:'T'})[it.size]+')' : '';
-      o.textContent = (it.name||'?')+sz+'  —  '+(it.cost_alloys||0)+'a';
-      sel.appendChild(o);
-    });
-    sel.value = selectedIdx==null ? '' : String(selectedIdx);
-    sel.addEventListener('change', ()=>{
-      const v = sel.value==='' ? null : Number(sel.value);
-      onChange(v);
-      // update cost label
-      const it = v==null?null:items[v];
-      costEl.innerHTML = it ? '<b>'+(it.cost_alloys||0)+'</b>a' : '—';
-    });
-    const costEl = document.createElement('div');
-    costEl.className = 'slot-cost';
-    const sel0 = selectedIdx==null?null:items[selectedIdx];
-    costEl.innerHTML = sel0 ? '<b>'+(sel0.cost_alloys||0)+'</b>a' : '—';
-    row.appendChild(tag);
-    row.appendChild(sel);
-    row.appendChild(costEl);
-    return row;
+  function renderDesigner(){
+    renderSections();
+    renderSlotsOnly();
+    updateSummary();
+    renderPaletteSizes();
+    renderPalette();
+    refreshPickedUI();
   }
 
   function updateSummary(){
