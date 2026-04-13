@@ -33,7 +33,7 @@
       document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
       t.classList.add('active');
       const id = t.dataset.tab;
-      ['weapons','utilities','auxiliaries','ships'].forEach(k=>{
+      ['designer','weapons','utilities','auxiliaries','ships'].forEach(k=>{
         document.getElementById('tab-'+k).classList.toggle('hidden', k!==id);
       });
     });
@@ -337,7 +337,9 @@
       option.weapons.forEach(code=>{
         dState.weaponLoadout.push({ code, idx: null, groupId: group.id });
       });
-      Object.entries(option.utility||{}).forEach(([size, n])=>{
+      Object.entries(option.utility||{}).forEach(([sizeCode, n])=>{
+        const size = SLOT_TO_SIZE[sizeCode] || sizeCode; // 'S' -> 'Small', etc.
+        if(!dState.utilityLoadout[size]) return;
         for(let i=0;i<n;i++) dState.utilityLoadout[size].push({ idx: null, groupId: group.id });
       });
       for(let i=0;i<(option.aux||0);i++){
